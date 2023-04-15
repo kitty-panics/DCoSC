@@ -1,0 +1,9 @@
+[submodule "tables-unicode"]
+	path = tables-unicode
+	url = git@github.com:kitty-panics/unicode-cjk.git
+[submodule "tables-encoding"]
+	path = tables-encoding
+	url = git@github.com:kitty-panics/CN-Char-Encoding.git
+[submodule "tables-charlist"]
+	path = tables-charlist
+	url = git@github.com:kitty-panics/cn-tables.git
