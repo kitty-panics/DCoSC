@@ -5,9 +5,9 @@
 # Duplicate Codes of Shape Codes
 #
 
-import os
 import re
 import sys
+import sqlite3
 
 from collections import Counter
 
@@ -20,8 +20,23 @@ from collections import Counter
 sc_file = sys.argv[1]
 # 形码的名字
 sc_name = sc_file.replace(".txt", "")
-# 读取形码码表文件
-sc_txt = open(sc_file, mode='r', encoding='utf-8').read()
+# 打开形码码表文件
+sc_txt = open(sc_file, mode='r', encoding='utf-8')
+
+conn = sqlite3.connect(':memory:')
+c = conn.cursor()
+c.execute('CREATE TABLE mytable (zi TEXT, code TEXT)')
+c.execute("CREATE INDEX idx_zi ON mytable(zi)")
+for i in sc_txt.readlines():
+    i = i.strip()
+    try:
+        zi = re.search('^.', i).group()
+        code = re.search('[a-z]+', i).group()
+    except AttributeError:
+        pass
+    data = [(zi, code)]
+    c.executemany('INSERT INTO mytable VALUES (?, ?)', data)
+    conn.commit()
 
 
 # 需要计算的字表 (取消注释以启用)
@@ -83,13 +98,10 @@ for i in char_table.values():
         # 得到单个汉字
         zi = j.strip()
         # 通过汉字获取过滤出编码
-        zi_encode = re.findall(zi + '\t.*', sc_txt)
-        try:
-            # 获取长度最长的编码
-            longest_encode = [re.search('[a-z]+', k).group() for k in zi_encode]
-            [all_encode.append(m) for m in longest_str_in_list(longest_encode)]
-        except ValueError:
-            #print("缺字: " + zi)
-            pass
+        c.execute('SELECT code FROM mytable WHERE zi = ?', (zi))
+        rows = c.fetchall()
+        zi_encode = [str(row).replace("('", "").replace("',)", "") for row in rows]
+        # 获取长度最长的编码并给 all_encode
+        [all_encode.append(m) for m in longest_str_in_list(zi_encode)]
     # 计算重复编码的组数
     count_str_repetitions(all_encode, sc_name, table_name)
