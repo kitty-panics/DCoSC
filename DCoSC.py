@@ -8,9 +8,17 @@
 import re
 import sys
 import sqlite3
+import multiprocessing
 
 from collections import Counter
 
+# 在内存中创建 SQLite
+conn_sc = sqlite3.connect(':memory:')
+csc = conn_sc.cursor()
+csc.execute('PRAGMA synchronous = OFF')
+csc.execute('PRAGMA journal_mode = OFF')
+csc.execute('CREATE TABLE csc_table (zi TEXT, code TEXT)')
+csc.execute("CREATE INDEX idx_zi ON csc_table(zi)")
 # 读取需要计算的形码码表 (sc = shape codes)
 # 码表文件需使用 unix 格式、utf-8 编码
 # 内容组织形式为: 汉字\t编码       (例: 的	rqyy)
@@ -20,13 +28,8 @@ from collections import Counter
 sc_file = sys.argv[1]
 # 形码的名字
 sc_name = sc_file.replace(".txt", "")
-# 打开形码码表文件
+# 打开形码码表文件，并写进 SQLite 中
 sc_txt = open(sc_file, mode='r', encoding='utf-8')
-
-conn = sqlite3.connect(':memory:')
-c = conn.cursor()
-c.execute('CREATE TABLE mytable (zi TEXT, code TEXT)')
-c.execute("CREATE INDEX idx_zi ON mytable(zi)")
 for i in sc_txt.readlines():
     i = i.strip()
     try:
@@ -35,8 +38,8 @@ for i in sc_txt.readlines():
     except AttributeError:
         pass
     data = [(zi, code)]
-    c.executemany('INSERT INTO mytable VALUES (?, ?)', data)
-    conn.commit()
+    csc.executemany('INSERT INTO csc_table VALUES (?, ?)', data)
+    conn_sc.commit()
 
 
 # 需要计算的字表 (取消注释以启用)
@@ -86,22 +89,55 @@ def count_str_repetitions(encode_list, sc_name, table_name):
 
 
 # 遍历已启用的字表
-for i in char_table.values():
-    # 字表名称
+def traversal_char_table(i):
+    # 获取字表名称
     table_name = get_index_by_value(char_table, i)
     # 用于存放当前字表的所有编码
+        # 方案 1
     all_encode = []
+        # 方案 2
+    #conn_allcode = sqlite3.connect(':memory:')
+    #cac = conn_allcode.cursor()
+    #cac.execute('PRAGMA synchronous = OFF')
+    #cac.execute('PRAGMA journal_mode = OFF')
+    #cac.execute('CREATE TABLE cac_table (allcode TEXT)')
+    #cac.execute("CREATE INDEX idx_allcode ON cac_table(allcode)")
     # 遍历当前的字表
     zi_file = open(i, mode='r', encoding='utf-8')
     zi_txt = zi_file.readlines()
     for j in zi_txt:
-        # 得到单个汉字
+        # 得到单字
         zi = j.strip()
-        # 通过汉字获取过滤出编码
-        c.execute('SELECT code FROM mytable WHERE zi = ?', (zi))
-        rows = c.fetchall()
+        # 通过单字过滤出编码
+        csc.execute('SELECT code FROM csc_table WHERE zi = ?', (zi))
+        rows = csc.fetchall()
         zi_encode = [str(row).replace("('", "").replace("',)", "") for row in rows]
-        # 获取长度最长的编码并给 all_encode
+        # 只保存单字长度最长的编码
+            # 方案 1
         [all_encode.append(m) for m in longest_str_in_list(zi_encode)]
+            # 方案 2
+        #for m in longest_str_in_list(zi_encode):
+        #    cac.executemany('INSERT INTO cac_table VALUES (?)', ([m],))
+        #conn_allcode.commit()
     # 计算重复编码的组数
+        # 方案 1
     count_str_repetitions(all_encode, sc_name, table_name)
+        # 方案 2
+    #cac.execute('SELECT allcode, COUNT(*) as count FROM cac_table GROUP BY allcode HAVING count > 1')
+    #print(sc_name + " -> " + table_name + ":\t" + str(len(cac.fetchall())))
+
+
+def main():
+    for i in char_table.values():
+        # 单进程
+        traversal_char_table(i)
+        # 多进程
+        #pool = multiprocessing.Pool()
+        #for i in char_table.values():
+        #    pool.apply_async(traversal_char_table, args=(i,))
+        #pool.close()
+        #pool.join()
+
+
+if __name__ == "__main__":
+    main()
